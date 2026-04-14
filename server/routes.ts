@@ -32,23 +32,26 @@ export function registerRoutes(server: Server, app: Express) {
     res.json(data);
   });
 
-  // Top stocks by frequency
+  // Top stocks by frequency (optional ?days=20 for recent N trading days)
   app.get("/api/top-stocks", (req, res) => {
     const limit = parseInt(req.query.limit as string) || 20;
-    const data = storage.getTopStocks(limit);
+    const days = parseInt(req.query.days as string) || 0;
+    const data = storage.getTopStocks(limit, days);
     res.json(data);
   });
 
-  // Backtest summary
-  app.get("/api/backtest/summary", (_req, res) => {
-    const data = storage.getTradesSummary();
+  // Backtest summary (optional ?days=N to filter recent N trading days)
+  app.get("/api/backtest/summary", (req, res) => {
+    const days = parseInt(req.query.days as string) || 0;
+    const data = storage.getTradesSummary(days);
     res.json(data);
   });
 
-  // Backtest trades
+  // Backtest trades (optional ?days=N)
   app.get("/api/backtest/trades", (req, res) => {
     const market = req.query.market as string;
-    const data = storage.getTradesByMarket(market);
+    const days = parseInt(req.query.days as string) || 0;
+    const data = storage.getTradesByMarket(market, days);
     res.json(data);
   });
 

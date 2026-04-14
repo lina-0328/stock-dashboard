@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 
 const navItems = [
   { href: "/", label: "대시보드", icon: BarChart3 },
-  { href: "/backtest", label: "백테스트", icon: TrendingUp },
+  { href: "/backtest", label: "수익률 체크", icon: TrendingUp },
   { href: "/history", label: "히스토리", icon: Clock },
 ];
 
@@ -29,14 +29,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
             {/* Logo */}
             <Link href="/">
               <div className="flex items-center gap-2.5 cursor-pointer" data-testid="logo">
-                <svg width="28" height="28" viewBox="0 0 32 32" fill="none" aria-label="순매수 시그널">
+                <svg width="28" height="28" viewBox="0 0 32 32" fill="none" aria-label="주식주부 리나의 수급인기종목 체크!">
                   <rect x="2" y="18" width="6" height="12" rx="1" fill="currentColor" opacity="0.3" />
                   <rect x="10" y="12" width="6" height="18" rx="1" fill="currentColor" opacity="0.5" />
                   <rect x="18" y="6" width="6" height="24" rx="1" fill="currentColor" opacity="0.7" />
                   <rect x="26" y="2" width="6" height="28" rx="1" fill="hsl(var(--primary))" />
                   <path d="M4 16 L12 10 L20 5 L28 2" stroke="hsl(var(--primary))" strokeWidth="2" strokeLinecap="round" fill="none" />
                 </svg>
-                <span className="text-base font-semibold tracking-tight">순매수 시그널</span>
+                <span className="text-base font-semibold tracking-tight">주식주부 리나의 수급인기종목 체크!</span>
               </div>
             </Link>
 

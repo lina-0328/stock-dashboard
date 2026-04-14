@@ -111,12 +111,39 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(signals).where(eq(signals.code, code)).orderBy(desc(signals.date)).all();
   }
 
-  getTopStocks(limit: number) {
-    const rows = db.all(sql`
-      SELECT name, market, COUNT(*) as count, ROUND(AVG(return_pct), 2) as avg_return
-      FROM signals GROUP BY code, name, market ORDER BY count DESC LIMIT ${limit}
-    `) as any[];
-    return rows.map(r => ({ name: r.name, market: r.market, count: r.count, avgReturn: r.avg_return }));
+  getTopStocks(limit: number, days?: number) {
+    let rows: any[];
+    if (days && days > 0) {
+      rows = db.all(sql`
+        SELECT sub.name, sub.market, sub.count, sub.first_date,
+               ROUND(sig.return_pct, 2) as first_return
+        FROM (
+          SELECT s.code, s.name, s.market, COUNT(*) as count, MIN(s.date) as first_date
+          FROM signals s
+          WHERE s.date IN (
+            SELECT DISTINCT date FROM signals ORDER BY date DESC LIMIT ${days}
+          )
+          GROUP BY s.code, s.name, s.market
+        ) sub
+        LEFT JOIN signals sig ON sig.code = sub.code AND sig.date = sub.first_date
+        ORDER BY sub.count DESC
+        LIMIT ${limit}
+      `) as any[];
+    } else {
+      rows = db.all(sql`
+        SELECT sub.name, sub.market, sub.count, sub.first_date,
+               ROUND(sig.return_pct, 2) as first_return
+        FROM (
+          SELECT s.code, s.name, s.market, COUNT(*) as count, MIN(s.date) as first_date
+          FROM signals s
+          GROUP BY s.code, s.name, s.market
+        ) sub
+        LEFT JOIN signals sig ON sig.code = sub.code AND sig.date = sub.first_date
+        ORDER BY sub.count DESC
+        LIMIT ${limit}
+      `) as any[];
+    }
+    return rows.map(r => ({ name: r.name, market: r.market, count: r.count, avgReturn: r.first_return, firstDate: r.first_date }));
   }
 
   insertSignals(data: InsertSignal[]) {
@@ -125,28 +152,74 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
-  getTradesSummary() {
+  getTradesSummary(days?: number) {
     const markets = ['전체', 'KOSPI', 'KOSDAQ'];
+
+    // 기간 범위 계산
+    let dateFrom: string | null = null;
+    let dateTo: string | null = null;
+    if (days && days > 0) {
+      const recentDates = db.all(sql`SELECT DISTINCT signal_date FROM trades ORDER BY signal_date DESC LIMIT ${days}`) as any[];
+      if (recentDates.length > 0) {
+        dateTo = recentDates[0].signal_date;
+        dateFrom = recentDates[recentDates.length - 1].signal_date;
+      }
+    } else {
+      const rangeRow = db.get(sql`SELECT MIN(signal_date) as min_d, MAX(signal_date) as max_d FROM trades`) as any;
+      dateFrom = rangeRow?.min_d || null;
+      dateTo = rangeRow?.max_d || null;
+    }
+
     return markets.map(m => {
-      const where = m === '전체' ? sql`1=1` : sql`market = ${m}`;
-      const row = db.get(sql`
-        SELECT COUNT(*) as total, 
-               ROUND(AVG(CASE WHEN ret_pct > 0 THEN 1.0 ELSE 0.0 END) * 100, 1) as win_rate,
-               ROUND(AVG(ret_pct), 2) as avg_return,
-               SUM(profit_1share) as total_pnl
-        FROM trades WHERE ${where}
-      `) as any;
+      let row: any;
+      if (days && days > 0) {
+        const marketWhere = m === '전체' ? sql`1=1` : sql`market = ${m}`;
+        row = db.get(sql`
+          SELECT COUNT(*) as total, 
+                 ROUND(AVG(CASE WHEN ret_pct > 0 THEN 1.0 ELSE 0.0 END) * 100, 1) as win_rate,
+                 ROUND(AVG(ret_pct), 2) as avg_return,
+                 SUM(profit_1share) as total_pnl
+          FROM trades WHERE ${marketWhere} AND signal_date IN (
+            SELECT DISTINCT signal_date FROM trades ORDER BY signal_date DESC LIMIT ${days}
+          )
+        `) as any;
+      } else {
+        const where = m === '전체' ? sql`1=1` : sql`market = ${m}`;
+        row = db.get(sql`
+          SELECT COUNT(*) as total, 
+                 ROUND(AVG(CASE WHEN ret_pct > 0 THEN 1.0 ELSE 0.0 END) * 100, 1) as win_rate,
+                 ROUND(AVG(ret_pct), 2) as avg_return,
+                 SUM(profit_1share) as total_pnl
+          FROM trades WHERE ${where}
+        `) as any;
+      }
       return {
         market: m,
         totalTrades: row?.total || 0,
         winRate: row?.win_rate || 0,
         avgReturn: row?.avg_return || 0,
         totalPnl: row?.total_pnl || 0,
+        dateFrom,
+        dateTo,
       };
     });
   }
 
-  getTradesByMarket(market?: string): Trade[] {
+  getTradesByMarket(market?: string, days?: number): Trade[] {
+    if (days && days > 0) {
+      const recentDates = db.all(sql`SELECT DISTINCT signal_date FROM trades ORDER BY signal_date DESC LIMIT ${days}`) as any[];
+      const dateSet = recentDates.map(r => r.signal_date);
+      if (dateSet.length === 0) return [];
+      const datePlaceholders = dateSet.map(d => `'${d}'`).join(',');
+      const marketFilter = (market && market !== '전체') ? `AND market = '${market}'` : '';
+      const rows = sqlite.prepare(`SELECT * FROM trades WHERE signal_date IN (${datePlaceholders}) ${marketFilter} ORDER BY signal_date DESC`).all() as any[];
+      return rows.map(r => ({
+        id: r.id, signalDate: r.signal_date, buyDate: r.buy_date, sellDate: r.sell_date,
+        isOpen: r.is_open, code: r.code, name: r.name, market: r.market,
+        buyPrice: r.buy_price, sellPrice: r.sell_price, retPct: r.ret_pct,
+        profit1share: r.profit_1share, invest1share: r.invest_1share,
+      }));
+    }
     if (market && market !== '전체') {
       return db.select().from(trades).where(eq(trades.market, market)).orderBy(desc(trades.signalDate)).all();
     }
