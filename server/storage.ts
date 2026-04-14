@@ -3,10 +3,8 @@ import Database from "better-sqlite3";
 import { signals, trades, news, meta, type Signal, type Trade, type News, type InsertSignal, type InsertTrade, type InsertNews } from "@shared/schema";
 import { eq, desc, and, sql } from "drizzle-orm";
 import path from "path";
-import { fileURLToPath } from "url";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DB_PATH = process.env.DB_PATH || path.resolve(__dirname, "../data.db");
+const DB_PATH = process.env.DB_PATH || path.resolve(process.cwd(), "data.db");
 const sqlite = new Database(DB_PATH);
 sqlite.pragma("journal_mode = WAL");
 
